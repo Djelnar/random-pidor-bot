@@ -1,6 +1,5 @@
 //@ts-check
 const TelegramBot = require('node-telegram-bot-api')
-const Redis = require('ioredis')
 const { promisify } = require('util')
 const { Mamkoeb } = require('./mamkoeb')
 const { trimSlashes } = require('./trim-slashes')
@@ -13,49 +12,16 @@ const token = process.env.TOKEN
 
 const bot = new TelegramBot(token, { polling: true })
 
-const redis = new Redis() // uses defaults unless given configuration object
-
-bot.onText(/.*/, async (msg) => {
-  await redis.hset(msg.chat.id, msg.message_id, JSON.stringify(msg))
-})
-
-const getPrevMessageRec = async (chatId, id, count = 0) => {
-  if (id < 0 || count > 50) {
-    return null
-  }
-
-  const msg = await redis.hget(chatId, id)
-
-  if (!msg) {
-    return getPrevMessageRec(chatId, id - 1, count + 1)
-  } else {
-    const parsedMsg = JSON.parse(msg)
-
-    if (/^[+]?[-]?\w\/.+/.test(parsedMsg.text)) {
-      return getPrevMessageRec(chatId, id - 1, count + 1)
-    }
-
-    return parsedMsg
-  }
-}
-
-bot.onText(/^[+]?[-]?y\/.+/, async (msg) => {
+bot.onText(/^[-]?y\/.+/, async (msg) => {
   const { chat } = msg
   let command = msg.text
-
-  let isReplyToReply = false
-
-  if (command.startsWith('+')) {
-    command = command.replace(/^\+/, '')
-    isReplyToReply = true
-  }
 
   if (command.startsWith('-')) {
     command = command.replace(/^\-/, '')
 
     await bot.deleteMessage(msg.chat.id, msg.message_id)
 
-    await sleep(1000)
+    await sleep(300)
   }
 
   command = command.replace(/^y\/+/, '').replace(/\/+/g, '/')
@@ -66,42 +32,39 @@ bot.onText(/^[+]?[-]?y\/.+/, async (msg) => {
 
   let prevMsg = msg?.reply_to_message
 
-  let textToProcess = prevMsg?.text || prevMsg?.caption || ''
-
-  if (!prevMsg) {
-    prevMsg = await getPrevMessageRec(msg.chat.id, msg.message_id - 1)
-
-    textToProcess = prevMsg?.text || prevMsg?.caption || ''
-  }
-
-  if (isReplyToReply) {
-    let savedPrevId = prevMsg.message_id - 1
-
-    prevMsg = prevMsg?.reply_to_message
-
-    if (!prevMsg) {
-      prevMsg = await getPrevMessageRec(msg.chat.id, savedPrevId)
-    }
-  }
-
   if (!prevMsg) {
     return
   }
 
-  const replaced = textToProcess.replace(re, replacement)
+  let textToProcess = prevMsg?.text || prevMsg?.caption || ''
 
-  if (!textToProcess || !replaced) {
-    console.log(msg, 'msg msg msg')
-    console.log(prevMsg, 'prevMsg prevMsg prevMsg')
-  }
+  const replaced = textToProcess.replace(re, replacement)
 
   const macrosed = await macros(replaced, prevMsg, msg)
 
-  if (!macrosed) {
+  if (!textToProcess || !replaced || !macrosed) {
+    console.log(msg, 'msg msg msg')
+    console.log(prevMsg, 'prevMsg prevMsg prevMsg')
     console.log(macrosed, 'macrosed macrosed macrosed')
   }
 
-  await bot.sendMessage(chat.id, macrosed, {
+  if (msg.photo && msg.photo.length > 0) {
+    return bot.sendMediaGroup(
+      chat.id,
+      msg.photo.map((p) => ({
+        type: 'photo',
+        media: p.file_id,
+        caption: macrosed,
+      })),
+      {
+        reply_to_message_id: prevMsg.message_id,
+        allow_sending_without_reply: true,
+      },
+    )
+  }
+
+  return bot.sendMessage(chat.id, macrosed, {
     reply_to_message_id: prevMsg.message_id,
+    allow_sending_without_reply: true,
   })
 })

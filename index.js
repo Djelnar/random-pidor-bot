@@ -70,9 +70,6 @@ bot.onText(/^[+]?[-]?y\/.+/, async (msg) => {
 
   if (!prevMsg) {
     prevMsg = await getPrevMessageRec(msg.chat.id, msg.message_id - 1)
-    if (!prevMsg) {
-      return
-    }
 
     textToProcess = prevMsg?.text || prevMsg?.caption || ''
   }
@@ -84,18 +81,25 @@ bot.onText(/^[+]?[-]?y\/.+/, async (msg) => {
 
     if (!prevMsg) {
       prevMsg = await getPrevMessageRec(msg.chat.id, savedPrevId)
-
-      if (!prevMsg) {
-        return
-      }
     }
+  }
 
-    textToProcess = prevMsg?.text || prevMsg?.caption || ''
+  if (!prevMsg) {
+    return
   }
 
   const replaced = textToProcess.replace(re, replacement)
 
+  if (!textToProcess || !replaced) {
+    console.log(msg, 'msg msg msg')
+    console.log(prevMsg, 'prevMsg prevMsg prevMsg')
+  }
+
   const macrosed = await macros(replaced, prevMsg, msg)
+
+  if (!macrosed) {
+    console.log(macrosed, 'macrosed macrosed macrosed')
+  }
 
   await bot.sendMessage(chat.id, macrosed, {
     reply_to_message_id: prevMsg.message_id,

@@ -1,7 +1,6 @@
 version: '3.1'
 
 services:
-  redis:
-    image: redis:6
-    ports:
-      - '6379:6379'
+  bot:
+    build: .
+    env_file: ./.env
